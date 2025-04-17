@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tqdm import tqdm
-from neural_network import NeuralNetwork
+from utils import NeuralNetwork
 
 
 class NeuralODE:

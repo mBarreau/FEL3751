@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 from tqdm import tqdm
 
-from neural_network import NeuralNetwork
+from utils import NeuralNetwork
 
 
 class PINN:
@@ -11,7 +11,7 @@ class PINN:
         self.n = ss.n
         self.optimizer_primal = tf.keras.optimizers.Adam(learning_rate=1e-3)
         self.optimizer_dual = tf.keras.optimizers.Adam(learning_rate=1e-3)
-        self.weight = tf.Variable(0, dtype=self.x_hat.dtype)
+        self.weight = tf.Variable(0.0, dtype=self.x_hat.dtype)
         self.N_dual = N_dual
         self.N_phys = N_phys
         self.T = T
@@ -47,40 +47,26 @@ class PINN:
             grads = tape.gradient(x_hat_tf, t)
             dx_hat_tf.append(tf.reshape(grads, (1, -1)))
         dx_hat_tf = tf.concat(dx_hat_tf, 0)
-        return dx_hat_tf - self.f(self(t)) - self.g(self(t)) @ self.u(t)
+        residual = None
+        return residual
 
     def get_mse_data(self):
-        if self.data is None:
-            return 0.0
-        mse_data = tf.reduce_mean(tf.square(self.data[1] - self.y(self.data[0])))
-        return mse_data
+        return 0.0
 
     def get_mse_residual(self):
-        residuals = tf.square(self.get_residual(self.t_tf))
-        return tf.reduce_mean(residuals)
+        return 0.0
 
+    # @tf.function
     def get_cost(self):
         return self.get_mse_data() + self.weight * self.get_mse_residual()
 
-    @tf.function
+    # @tf.function
     def primal_update(self):
-        with tf.GradientTape(watch_accessed_variables=False) as loss_tape:
-            loss_tape.watch(self.x_hat.trainable_variables)
-            loss = self.get_cost()
-        grads = loss_tape.gradient(loss, self.x_hat.trainable_variables)
-        self.optimizer_primal.apply_gradients(
-            zip(grads, self.x_hat.trainable_variables)
-        )
-        return loss
+        pass
 
-    @tf.function
+    # @tf.function
     def dual_update(self):
-        with tf.GradientTape(watch_accessed_variables=False) as loss_tape:
-            loss_tape.watch(self.weight)
-            loss = -self.get_cost()
-        grads = loss_tape.gradient(loss, [self.weight])
-        self.optimizer_dual.apply_gradients(zip(grads, [self.weight]))
-        return self.get_cost()
+        pass
 
     def train(self, epochs=3000):
         losses = []
@@ -88,11 +74,12 @@ class PINN:
         self.resample()
         pbar = tqdm(range(epochs))
         for i in pbar:
-            loss = self.primal_update()
+            self.primal_update()
             if i % self.N_dual == 0 and i > 0:
                 self.dual_update()
                 self.resample()
-            pbar.set_description(f"Loss: {loss.numpy():.6f}")
-            losses.append(loss.numpy())
+            loss = self.get_cost().numpy()
+            pbar.set_description(f"Loss: {loss:.6f}")
+            losses.append(loss)
             weights.append(self.weight.numpy())
         return losses, weights

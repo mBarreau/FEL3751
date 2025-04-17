@@ -2,11 +2,10 @@
 from pinn import PINN
 from neural_ode import NeuralODE
 
-from system import AffineSystem
 import numpy as np
 import matplotlib.pyplot as plt
 
-from utils import plot
+from utils import plot, AffineSystem
 
 plt.rcParams["text.usetex"] = True
 import tensorflow as tf
