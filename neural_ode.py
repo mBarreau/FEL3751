@@ -23,25 +23,9 @@ class NeuralODE:
         )
         self.u = u
 
-    @tf.function
+    # @tf.function
     def _call(self, t, x0, u):
-        def dynamics(t, x):
-            x = tf.reshape(x, (-1, 1))
-            t = tf.reshape(t, (-1, 1))
-            dxdt = (
-                self.f(x)
-                + self.g(x) @ u(t)
-                + self.weight_epsilon * self.epsilon(tf.transpose(x))
-            )
-            return tf.reshape(dxdt, (-1,))
-
-        result = self.ode_solver.solve(
-            dynamics,
-            initial_time=0.0,
-            initial_state=tf.reshape(x0, (-1,)),
-            solution_times=tf.reshape(t, (-1,)),
-        )
-        return tf.transpose(result.states)
+        return tf.tile(x0, [1, t.shape[1]])
 
     def __call__(self, t, x0=None, u=None):
         if x0 is None:
@@ -63,13 +47,13 @@ class NeuralODE:
             loss = self.get_mse_data()
         grads = tape.gradient(loss, vars)
         self.optimizer.apply_gradients(zip(grads, vars))
-        return loss
 
     def train(self, epochs=3000):
         losses = []
         pbar = tqdm(range(epochs))
         for i in pbar:
-            loss = self.update()
-            pbar.set_description(f"Loss: {loss.numpy():.6f}")
-            losses.append(loss.numpy())
+            self.update()
+            loss = self.get_mse_data().numpy()
+            pbar.set_description(f"Loss: {loss:.6f}")
+            losses.append(loss)
         return losses
