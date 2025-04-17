@@ -2,6 +2,120 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import cm
 import numpy as np
 
+import tensorflow as tf
+import numpy as np
+
+## Neural Network utilities
+
+
+def init(layers, bias=True, seed=1234, dtype=tf.float32):
+    Ws, bs = [], []
+    default_rng = np.random.default_rng(seed)
+    for i in range(len(layers) - 1):
+        W = xavier_init([layers[i], layers[i + 1]], rng=default_rng)
+        b = tf.zeros([1, layers[i + 1]])
+        Ws.append(tf.Variable(W, dtype=dtype, name=f"W_{i}"))
+        bs.append(tf.Variable(b, dtype=dtype, trainable=bias, name=f"b_{i}"))
+    return Ws, bs
+
+
+def xavier_init(size, rng=np.random.default_rng()):
+    in_dim = size[0]
+    out_dim = size[1]
+    xavier_stddev = np.sqrt(2 / (in_dim + out_dim))
+    return rng.normal(size=[in_dim, out_dim], scale=xavier_stddev)
+
+
+class LinearLayer(tf.Module):
+    def __init__(self, size, dtype=tf.float32, **kwargs):
+        super().__init__(**kwargs)
+        self.matrix = tf.Variable(tf.zeros(size), dtype=dtype)
+
+    def __call__(self, x):
+        return tf.matmul(x, self.matrix)
+
+
+class NeuralNetwork(tf.Module):
+    def __init__(
+        self,
+        layers,
+        bias=True,
+        in_phi=tf.tanh,
+        phi=tf.identity,
+        output_dim=None,
+        seed=1234,
+        dtype=tf.float32,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.layers = layers
+        self.bias = bias
+        self.dtype = dtype
+        self.seed = seed
+        self.reinit()
+        self.in_phi = in_phi
+        self.phi = phi
+        self.output_dim = output_dim
+
+    @tf.function
+    def __call__(self, input):
+        num_layers = len(self.Ws)
+        H = tf.cast(input, self.dtype)
+        for layer in range(0, num_layers - 1):
+            W = self.Ws[layer]
+            b = self.bs[layer]
+            H = self.in_phi(tf.add(tf.matmul(H, W), b))
+        W = self.Ws[-1]
+        b = self.bs[-1]
+        output = self.phi(tf.add(tf.matmul(H, W), b))
+        output = tf.transpose(output)
+        if self.output_dim is not None:
+            output = tf.reshape(output, (-1, self.output_dim[0], self.output_dim[1]))
+        return output
+
+    def reinit(self):
+        self.Ws, self.bs = init(
+            layers=self.layers, bias=self.bias, seed=self.seed, dtype=self.dtype
+        )
+
+
+## System definition
+
+
+class AffineSystem:
+
+    def __init__(self, f, g, h, n, std_noise=0, seed=1234) -> None:
+        self.f = f
+        self.g = g
+        self.h = h
+        self.n = n
+        self.std_noise = std_noise
+        self.default_rng = np.random.default_rng(seed)
+
+    def simulate(self, x0, T, deltaT, u=lambda t: np.array([[0]])):
+        ts = np.arange(0, T, deltaT)
+        self.t = ts.reshape((1, -1))
+        self.deltaT = deltaT
+        self.xs = [x0]
+        self.ys = [self.h(x0)]
+        us = u(self.t)
+        for i in range(len(ts) - 1):
+            x_plus = self.xs[-1] + deltaT * (
+                self.f(self.xs[-1]) + self.g(self.xs[-1]) @ us[:, i : (i + 1)]
+            )
+            self.xs.append(x_plus)
+            self.ys.append(self.h(x_plus))
+        self.xs = np.hstack(self.xs)
+        self.ys = np.hstack(self.ys)
+        self.ys += self.std_noise * self.default_rng.normal(size=self.ys.shape)
+        return self.xs
+
+    def y(self):
+        return self.ys
+
+
+## Plotting function
+
 
 def plot(t, x, x_hat, T=None, subsampling=10, name="x"):
     colors = cm.rainbow(np.linspace(0, 1, x.shape[0]))

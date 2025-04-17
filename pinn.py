@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 from tqdm import tqdm
 
-from neural_network import NeuralNetwork
+from utils import NeuralNetwork
 
 
 class PINN:
@@ -59,6 +59,7 @@ class PINN:
         residuals = tf.square(self.get_residual(self.t_tf))
         return tf.reduce_mean(residuals)
 
+    @tf.function
     def get_cost(self):
         return self.get_mse_data() + self.weight * self.get_mse_residual()
 
@@ -88,11 +89,12 @@ class PINN:
         self.resample()
         pbar = tqdm(range(epochs))
         for i in pbar:
-            loss = self.primal_update()
+            self.primal_update()
             if i % self.N_dual == 0 and i > 0:
                 self.dual_update()
                 self.resample()
-            pbar.set_description(f"Loss: {loss.numpy():.6f}")
-            losses.append(loss.numpy())
+            loss = self.get_cost().numpy()
+            pbar.set_description(f"Loss: {loss:.6f}")
+            losses.append(loss)
             weights.append(self.weight.numpy())
         return losses, weights
