@@ -20,6 +20,15 @@ def xavier_init(size, rng=np.random.default_rng()):
     return rng.normal(size=[in_dim, out_dim], scale=xavier_stddev)
 
 
+class LinearLayer(tf.Module):
+    def __init__(self, size, dtype=tf.float32, **kwargs):
+        super().__init__(**kwargs)
+        self.matrix = tf.Variable(tf.zeros(size), dtype=dtype)
+
+    def __call__(self, x):
+        return tf.matmul(x, self.matrix)
+
+
 class NeuralNetwork(tf.Module):
     def __init__(
         self,

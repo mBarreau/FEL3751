@@ -25,7 +25,7 @@ u = lambda t: tf.concat([tf.sin(t) + tf.cos(t)], 0)
 
 # External simulator
 ss = AffineSystem(f, g, h, n=2, std_noise=std_noise, seed=1234)
-T = 5  # training interval
+T = 6  # training interval
 P = 3  # prediction interval
 deltaT = 0.01
 
@@ -40,7 +40,7 @@ max_T = int(np.floor(T / deltaT))
 data = (ss.t[:, 0:max_T:k], y[:, 0:max_T:k])
 
 # %% PINN Optimizer
-pinn = PINN([20, 20, 20], ss, N_phys=10, T=T + P / 3, seed=1234)
+pinn = PINN([20, 20, 20], ss, N_phys=10, T=T + P, seed=1234)
 pinn.set_data(data, u)
 losses = []
 weights = []
@@ -77,9 +77,8 @@ plt.grid()
 plt.show()
 
 # %% Neural ODE optimizer (optimize-then-discretize)
-neural_ode = NeuralODE([20], 1, ss.n, h, phi=tf.identity, seed=1234)
+neural_ode = NeuralODE([10, 10], ss, seed=1234)
 neural_ode.set_data(data, u)
-neural_ode.x0.assign(x0)
 losses = []
 
 # %% Train
