@@ -5,30 +5,30 @@ from scipy.special import logsumexp
 
 
 class SpikeAndSlab(rv_continuous):
-    def __init__(self, pi_spike=0.5, spike_std=1e-2, slab_std=1.0, **kwargs):
+    def __init__(self, pi_spike=0.5, spike_std=1e-2, **kwargs):
         super().__init__(**kwargs)
+        self.name = "spike_slab"
         self.pi_spike = pi_spike
         self.spike_std = spike_std
-        self.slab_std = slab_std
 
         # Underlying distributions
         self.spike_dist = norm(loc=0.0, scale=spike_std)
-        self.slab_dist = norm(loc=0.0, scale=slab_std)
+        self.slab_dist = norm
 
-    def _pdf(self, x):
+    def _pdf(self, x, *args, **kwargs):
         """Mixture PDF."""
+        args, loc, scale = self._parse_args(*args, **kwargs)
         return self.pi_spike * self.spike_dist.pdf(x) + (
             1 - self.pi_spike
-        ) * self.slab_dist.pdf(x)
+        ) * self.slab_dist.pdf(x, scale=scale)
 
     def _logpdf(self, x, *args, **kwargs):
         args, loc, scale = self._parse_args(*args, **kwargs)
         """Log of mixture PDF."""
         log_components = np.vstack(
             [
-                np.log(self.pi_spike) + self.spike_dist.logpdf(x, loc=loc, scale=scale),
-                np.log(1 - self.pi_spike)
-                + self.slab_dist.logpdf(x, loc=loc, scale=scale),
+                np.log(self.pi_spike) + self.spike_dist.logpdf(x),
+                np.log(1 - self.pi_spike) + self.slab_dist.logpdf(x, scale=scale),
             ]
         )
         return logsumexp(log_components, axis=0)
@@ -43,27 +43,33 @@ class SpikeAndSlab(rv_continuous):
         return samples
 
 
+spike_slab = SpikeAndSlab(pi_spike=0.4, spike_std=1e-1)
+
 # %%
+"""from scipy.stats import norm, laplace
+
+sigma = 10
 # Create an instance
-spike_slab = SpikeAndSlab(name="spike_slab", pi_spike=0.4, spike_std=1e-1, slab_std=1.0)
+dist_prior = [laplace, spike_slab]
 
 # Evaluate logpdf
-"""theta = np.array([0.0, 0.5, 2.0])
+theta = np.array([0.0, 0.5, 2.0])
 print(spike_slab.logpdf(theta))
 
-# Draw samples
-samples = spike_slab.rvs(size=1000)
+# Draw sample
 
 # Plot PDF
 import matplotlib.pyplot as plt
 
-x = np.linspace(-5, 5, 500)
-plt.plot(x, spike_slab.pdf(x), label="Spike-and-Slab PDF")
-plt.title("Spike and Slab Distribution")
-plt.xlabel(r"$\theta$")
-plt.ylabel("Density")
-plt.legend()
-plt.grid(True)
-plt.show()"""
+x = np.linspace(-3 * sigma, 3 * sigma, 500)
+for prior in dist_prior:
+    samples = prior.rvs(size=2000, scale=sigma)
+    plt.hist(samples, density=True, bins=30, label=prior.name, alpha=0.5)
+    plt.plot(x, prior.pdf(x, scale=sigma), label=f"{prior.name} PDF")
+    plt.xlabel(r"$\theta$")
+    plt.ylabel("Density")
+    plt.legend()
+    plt.grid(True)
+    plt.show()"""
 
 # %%
