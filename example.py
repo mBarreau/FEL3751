@@ -1,6 +1,5 @@
 # %%
-from pinn import PINN
-from neural_ode import NeuralODE
+from pinn import PINN, CPINN
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,10 +19,11 @@ g = lambda _: B
 h = lambda x: C @ x
 
 std_noise = 0.1
-u = lambda t: tf.concat([tf.sin(t) + tf.cos(t)], 0)
+u = lambda t: tf.ones_like(t)
+# u = lambda t: tf.concat([tf.sin(t) + tf.cos(t)], 0)
 
 # External simulator
-ss = AffineSystem(f, g, h, n=2, std_noise=std_noise, seed=1234)
+ss = AffineSystem(f, g, h, n=2, p=1, q=1, std_noise=std_noise, seed=1234)
 T = 6  # training interval
 P = 3  # prediction interval
 deltaT = 0.01
@@ -36,20 +36,26 @@ y = ss.y()
 # Measurements
 k = 10
 max_T = int(np.floor(T / deltaT))
-data = (ss.t[:, 0:max_T:k], y[:, 0:max_T:k])
+data = (ss.t[:, 0:max_T:k], y[:, 0:max_T:k], u(ss.t[:, 0:max_T:k]))
 
 # %% PINN Optimizer
-pinn = PINN([20, 20, 20], ss, N_phys=10, T=T + P, seed=1234)
-pinn.set_data(data, u)
+cpinn = CPINN(
+    [20, 20, 20], [10, 10, 10], ss, N_phys=10, T=T, P=P, closed_loop=False, seed=1234
+)
+cpinn.set_data(data)
+cpinn.objective(r=u, Q=0.1, R=0.0)
 losses = []
 weights = []
 
 # %% Train
-loss, weight = pinn.train(3000)
+loss, weight = cpinn.train(5000)
 losses += loss
 weights += weight
 
 # %% Plot after training
+x = ss.simulate(x0, T + P, deltaT, u=cpinn.u)
+y = ss.y()
+
 plt.figure()
 plt.plot(losses)
 plt.yscale("log")
@@ -63,11 +69,18 @@ plt.xlabel("Epoch")
 plt.ylabel("Weight value")
 plt.grid()
 
-plot(ss.t, x, pinn, T=T)
-plot(ss.t, y, pinn.y, T=T, name="y")
+plot(ss.t, x, cpinn, T=T)
+plot(ss.t, y, cpinn.y, T=T, name="y")
 
 plt.figure()
-error = np.linalg.norm(x - pinn(ss.t).numpy(), axis=0).reshape((1, -1))
+plt.plot(ss.t[0, :], cpinn.u(ss.t).numpy().flatten())
+plt.xlabel("Time [s]")
+plt.ylabel("Control input")
+plt.grid()
+plt.show()
+
+plt.figure()
+error = np.linalg.norm(x - cpinn(ss.t).numpy(), axis=0).reshape((1, -1))
 plt.plot(ss.t[0, :], error[0, :])
 plt.yscale("log")
 plt.xlabel("Time [s]")
@@ -75,33 +88,5 @@ plt.ylabel("$L_2$ error")
 plt.grid()
 plt.show()
 
-# %% Neural ODE optimizer (optimize-then-discretize)
-neural_ode = NeuralODE([10, 10], ss, seed=1234)
-neural_ode.set_data(data, u)
-losses = []
-
-# %% Train
-losses += neural_ode.train(1000)
-
-# %% Plot after training
-plt.figure()
-plt.plot(losses)
-plt.yscale("log")
-plt.xlabel("Epoch")
-plt.ylabel("Loss value")
-plt.grid()
-
-neural_ode_test = lambda t: neural_ode(t, u=u)
-plot(ss.t, x, neural_ode_test, T=T)
-plot(ss.t, y, lambda t: neural_ode.y(t, u=u), T=T, name="y")
-
-plt.figure()
-error = np.linalg.norm(x - neural_ode_test(ss.t), axis=0).reshape((1, -1))
-plt.plot(ss.t[0, :], error[0, :])
-plt.yscale("log")
-plt.xlabel("Time [s]")
-plt.ylabel("$L_2$ error")
-plt.grid()
-plt.show()
 
 # %%

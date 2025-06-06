@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 from tqdm import tqdm
 
-from utils import NeuralNetwork
+from utils import NeuralNetwork, tf_interp
 
 
 class PINN:
@@ -63,15 +63,16 @@ class PINN:
     def get_cost(self):
         return self.get_mse_data() + self.weight * self.get_mse_residual()
 
+    def get_primal_variables(self):
+        return self.x_hat.trainable_variables
+
     @tf.function
     def primal_update(self):
         with tf.GradientTape(watch_accessed_variables=False) as loss_tape:
-            loss_tape.watch(self.x_hat.trainable_variables)
+            loss_tape.watch(self.get_primal_variables())
             loss = self.get_cost()
-        grads = loss_tape.gradient(loss, self.x_hat.trainable_variables)
-        self.optimizer_primal.apply_gradients(
-            zip(grads, self.x_hat.trainable_variables)
-        )
+        grads = loss_tape.gradient(loss, self.get_primal_variables())
+        self.optimizer_primal.apply_gradients(zip(grads, self.get_primal_variables()))
         return loss
 
     @tf.function
@@ -98,3 +99,65 @@ class PINN:
             losses.append(loss)
             weights.append(self.weight.numpy())
         return losses, weights
+
+
+class CPINN(PINN):
+    def __init__(
+        self,
+        layers_trajectory,
+        layers_control,
+        ss,
+        N_phys=10,
+        N_dual=10,
+        T=5,
+        P=3,
+        closed_loop=False,
+        seed=1234,
+    ):
+        self.T_data = T
+        self.P = P
+        self.closed_loop = closed_loop
+        self.pi = NeuralNetwork([1] + layers_control + [ss.p], seed=seed + 1)
+        super().__init__(layers_trajectory, ss, N_phys, N_dual, T + P, seed)
+
+    def set_data(self, data):
+        self.data = data[0], data[1], data[2]
+
+    def objective(self, r, Q, R):
+        self.r = r
+        self.Q = Q
+        self.R = R
+
+    def get_primal_variables(self):
+        return super().get_primal_variables() + self.pi.trainable_variables
+
+    def u(self, t):
+        data_regime = tf.less(t, self.T_data)
+        u_data = tf_interp(t, self.data[0].flatten(), tf.reshape(self.data[2], (-1,)))
+        u_data = tf.cast(u_data, self.x_hat.dtype)
+        u_pred = self.pi(tf.transpose(t))
+        return tf.where(data_regime, u_data, u_pred)
+
+    def du(self, t):
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            tape.watch(t)
+            u_tf = self.u(t)
+        du_tf = tape.gradient(u_tf, t)
+        return du_tf
+
+    def resample(self):
+        super().resample()
+        self.resample_objective()
+
+    def resample_objective(self):
+        t_objective_tf = self.T_data + tf.convert_to_tensor(
+            np.random.rand(int(self.N_phys * self.P), 1) * self.P
+        )
+        self.t_objective_tf = tf.cast(t_objective_tf, self.x_hat.dtype)
+
+    def get_cost(self):
+        pinn_cost = super().get_cost()
+        t = tf.transpose(self.t_objective_tf)
+        ref_cost = self.Q * tf.reduce_mean(tf.square(self.y(t) - self.r(t)))
+        control_cost = self.R * tf.reduce_mean(tf.square(self.du(t)))
+        return pinn_cost + ref_cost + control_cost

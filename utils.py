@@ -79,16 +79,45 @@ class NeuralNetwork(tf.Module):
         )
 
 
+## Tensorflow utilities
+
+
+def tf_interp(x, xs, ys):
+    ys = tf.convert_to_tensor(ys)
+    dtype = ys.dtype
+
+    ys = tf.cast(ys, dtype)
+    xs = tf.cast(xs, dtype)
+    x = tf.cast(x, dtype)
+
+    xs = tf.concat([[xs.dtype.min], xs, [xs.dtype.max]], axis=0)
+    ys = tf.concat([ys[:1], ys, ys[-1:]], axis=0)
+
+    ms = (ys[1:] - ys[:-1]) / (xs[1:] - xs[:-1])
+    ms = tf.pad(ms[:-1], [(1, 1)])
+
+    bs = ys - ms * xs
+
+    i = tf.math.argmax(xs[..., tf.newaxis, :] > x[..., tf.newaxis], axis=-1)
+    m = tf.gather(ms, i, axis=-1)
+    b = tf.gather(bs, i, axis=-1)
+
+    y = m * x + b
+    return tf.cast(tf.reshape(y, tf.shape(x)), dtype)
+
+
 ## System definition
 
 
 class AffineSystem:
 
-    def __init__(self, f, g, h, n, std_noise=0, seed=1234) -> None:
+    def __init__(self, f, g, h, n, p, q, std_noise=0, seed=1234):
         self.f = f
         self.g = g
         self.h = h
         self.n = n
+        self.p = p
+        self.q = q
         self.std_noise = std_noise
         self.default_rng = np.random.default_rng(seed)
 
