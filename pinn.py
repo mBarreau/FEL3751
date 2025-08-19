@@ -10,7 +10,10 @@ class PINN:
         self.x_hat = NeuralNetwork([1] + layers + [ss.n], seed=seed)
         self.n = ss.n
         self.optimizer_primal = tf.keras.optimizers.Adam(learning_rate=1e-3)
-        self.optimizer_dual = tf.keras.optimizers.Adam(learning_rate=1e-3)
+        lr_dual = N_dual * self.optimizer_primal.learning_rate.numpy()
+        self.optimizer_dual = tf.keras.optimizers.Adam(
+            learning_rate=lr_dual.astype(np.float64)
+        )
         self.weight = tf.Variable(0, dtype=self.x_hat.dtype)
         self.N_dual = N_dual
         self.N_phys = N_phys
@@ -19,6 +22,11 @@ class PINN:
         self.g = ss.g
         self.h = ss.h
         self.data = None
+
+        self.t_tf = tf.Variable(
+            tf.zeros((1, int(self.N_phys * self.T))), dtype=self.x_hat.dtype
+        )
+        tf.random.set_seed(seed)
         self.resample()
 
     def set_data(self, data, u):
@@ -26,20 +34,19 @@ class PINN:
         self.u = u
 
     def resample(self):
-        t_tf = tf.convert_to_tensor(
-            np.random.rand(int(self.N_phys * self.T), 1) * self.T
-        )
-        self.t_tf = tf.cast(t_tf, self.x_hat.dtype)
+        t_tf = tf.random.uniform(self.t_tf.shape, dtype=self.x_hat.dtype) * self.T
+        self.t_tf.assign(t_tf)
 
+    @tf.function
     def __call__(self, t):
-        return self.x_hat(tf.transpose(t))
+        return self.x_hat(t)
 
     def y(self, t):
         return self.h(self(t))
 
-    def get_residual(self, t_tf):
+    def get_residual(self):
         dx_hat_tf = []
-        t = tf.transpose(t_tf)
+        t = self.t_tf
         for i in range(self.n):
             with tf.GradientTape(watch_accessed_variables=False) as tape:
                 tape.watch(t)
@@ -52,11 +59,14 @@ class PINN:
     def get_mse_data(self):
         if self.data is None:
             return 0.0
-        mse_data = tf.reduce_mean(tf.square(self.data[1] - self.y(self.data[0])))
+        mse_data = tf.reduce_mean(
+            tf.square(tf.norm(self.data[1] - self.y(self.data[0]), axis=0))
+        )
         return mse_data
 
+    @tf.function
     def get_mse_residual(self):
-        residuals = tf.square(self.get_residual(self.t_tf))
+        residuals = tf.square(self.get_residual())
         return tf.reduce_mean(residuals)
 
     @tf.function

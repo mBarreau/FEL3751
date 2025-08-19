@@ -75,6 +75,9 @@ plt.ylabel("$L_2$ error")
 plt.grid()
 plt.show()
 
+normalized_error = np.mean(error) / np.mean(np.linalg.norm(x, axis=0))
+print(f"Normalized error PINN: {np.round(100*normalized_error, 3)}%")
+
 # %% Neural ODE optimizer (optimize-then-discretize)
 neural_ode = NeuralODE([10, 10], ss, seed=1234)
 neural_ode.set_data(data, u)
@@ -103,5 +106,8 @@ plt.xlabel("Time [s]")
 plt.ylabel("$L_2$ error")
 plt.grid()
 plt.show()
+
+normalized_error = np.mean(error) / np.mean(np.linalg.norm(x, axis=0))
+print(f"Normalized error Neural-ODE: {np.round(100*normalized_error, 3)}%")
 
 # %%

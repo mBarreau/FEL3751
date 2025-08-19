@@ -60,14 +60,16 @@ class NeuralNetwork(tf.Module):
     @tf.function
     def __call__(self, input):
         num_layers = len(self.Ws)
-        H = tf.cast(input, self.dtype)
+        H = tf.cast(tf.transpose(input), self.dtype)
         for layer in range(0, num_layers - 1):
             W = self.Ws[layer]
-            b = self.bs[layer]
-            H = self.in_phi(tf.add(tf.matmul(H, W), b))
+            HW = tf.matmul(H, W)
+            b = tf.tile(self.bs[layer], [tf.shape(HW)[0], 1])
+            H = self.in_phi(tf.matmul(H, W) + b)
         W = self.Ws[-1]
-        b = self.bs[-1]
-        output = self.phi(tf.add(tf.matmul(H, W), b))
+        HW = tf.matmul(H, W)
+        b = tf.tile(self.bs[-1], [tf.shape(HW)[0], 1])
+        output = self.phi(tf.matmul(H, W) + b)
         output = tf.transpose(output)
         if self.output_dim is not None:
             output = tf.reshape(output, (-1, self.output_dim[0], self.output_dim[1]))
